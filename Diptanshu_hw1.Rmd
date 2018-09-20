@@ -140,7 +140,6 @@ Suppose that, for a certain population, we can predict log earnings from log hei
 
 The folder beauty contains data from Hamermesh and Parker (2005) on student evaluations of instructors' beauty and teaching quality for several courses at the University of Texas. The teaching evaluations were conducted at the end of the semester, and the beauty judgments were made later, by six students who had not attended the classes and were not aware of the course evaluations.
 ```{r}
-gelman_example_dir<-"http://www.stat.columbia.edu/~gelman/arm/examples/"
 beauty.data <- read.table (paste0(gelman_example_dir,"beauty/ProfEvaltnsBeautyPublic.csv"), header=T, sep=",")
 
 ```
@@ -182,6 +181,12 @@ beauty.data$class_sum <- rowSums(beauty.data[,c('class3','class8','class12','cla
 #Creating a model with variables class_sum, btystdave
 lm_4 <- lm(courseevaluation ~ class_sum * btystdave , beauty.data)
 summary(lm_4)
+
+#Interpretation of Result: 
+# The intercept represents the courseEval value for beauty score = 0 and class =0, This is a meaningless value
+# The estimate of class_sum gives the difference betwwen a students courseEval if he has taken/not taken the any of the class 
+# The estimate of btysdave gives the increase in courseEval for a unit increase in the bytsdave variable given that all other factors are constant  
+# The estimate of class_sum:bystvdave gives the difference in slope of regression lines for the data points with different class_sum 
 
 ```
 
@@ -304,6 +309,15 @@ Prove that the least-squares fit in simple-regression analysis has the following
 
 2. $\sum (y_i-\hat{y}_i)(\hat{y}_i-\bar{y}) =\sum \hat{e}_i (\hat{y}_i-\bar{y})=0$
 
+![Solution 1](Fig/As1_Ques1.jpg)
+
+
+
+
+
+
+
+
 Suppose that the means and standard deviations of $\mat{y}$ and  $\mat{x}$ are the same:  $\bar{\mat{y}}=\bar{\mat{x}}$ and $sd(\mat{y})=sd(\mat{x})$.
 
 1. Show that, under these circumstances 
@@ -312,7 +326,23 @@ where $\beta_{y|x}$ is the least-squares slope for the simple regression of $\ma
 
 2. Why, if $\alpha_{y|x}=\alpha_{x|y}$ and $\beta_{y|x}=\beta_{x|y}$, is the least squares line for the regression of $\mat{y}$  on $\mat{x}$ different from the line for the regression of $\mat{x}$ on $\mat{y}$ (when $r_{xy}<1$)?
 
+![Solution 2](Fig/As1_Ques2.jpg)
+
+
+
+
+
+
+
 3. Imagine that educational researchers wish to assess the efficacy of a new program to improve the reading performance of children. To test the program, they recruit a group of children who are reading substantially vbelow grade level; after a year in the program, the researchers observe that the children, on average, have imporved their reading performance.  Why is this a weak research design?  How could it be improved?
+
+#### Reason 1 : Misrepresentation of Sample  
+##### Since they recruited only children reading substaintially below the grade level; the results from finding cant be generalized for all children   
+##### Solution : We can do random or stratified sampling of the students to ensure every student class is represented well  
+
+#### Reason 2 : The new program is not been comparing the effect to a control group  
+##### All the effect cant be attributed entirely to the new program   
+##### Solution : Form a similar control group that is not given treatment or given previous treatment to understand the incremental/decremental effect of the new proggram  
 
 # Feedback comments etc.
 
