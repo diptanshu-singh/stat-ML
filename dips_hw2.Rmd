@@ -1,0 +1,456 @@
+---
+title: "Homework 02"
+author: "Diptanshu Singh"
+date: "Septemeber 16, 2018"
+output:
+  pdf_document: default
+---
+
+\newcommand{\mat}[1]{\boldsymbol{#1}} 
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\rv}[1]{\underline{#1}}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,dev="CairoPNG",fig.align = "center", 
+                      fig.width = 5.656, fig.height = 4, global.par = TRUE)
+pacman::p_load("arm","data.table","Cairo","faraway","foreign","ggplot2","knitr","dplyr")
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01)
+```
+
+# Introduction 
+In homework 2 you will fit many regression models.  You are welcome to explore beyond what the question is asking you.  
+
+Please come see us we are here to help.
+
+## Data analysis 
+
+### Analysis of earnings and height data
+
+The folder `earnings` has data from the Work, Family, and Well-Being Survey (Ross, 1990).
+You can find the codebook at http://www.stat.columbia.edu/~gelman/arm/examples/earnings/wfwcodebook.txt
+```{r}
+gelman_dir <- "http://www.stat.columbia.edu/~gelman/arm/examples/"
+heights    <- read.dta (paste0(gelman_dir,"earnings/heights.dta"))
+```
+
+Pull out the data on earnings, sex, height, and weight.
+
+1. In R, check the dataset and clean any unusually coded data.
+
+```{r}
+summary(heights)
+#Null values in the heights variable. Removing rows with null heights 
+#Removing height1 and height2 columns as height = height1 + 12*height2
+h_h <-  heights[!is.na(heights$height),c(-2,-3)]
+
+count(h_h, vars = ed) 
+#Removing rows with ed = 98 and 99 
+h_ed <- h_h[which(h_h$ed < 98),]
+
+count(h_ed, vars = yearbn)
+#Removing rows with yearbn = 99 as the year_survey = 90
+h_yr <- subset(h_ed, yearbn != 99)
+
+#Other observations for the data
+#Race,Hisp will be a categorical variable and not continuos
+
+#Null values are present in earn (650 observations); Since this is the dependent variable; we will divide the dataset on this variabe into test and train 
+h <- h_yr[!is.na(h_yr$earn),]
+h_new <- h_yr[is.na(h_yr$earn),]
+#Removing observations with height = NA 
+
+#Modelling dataset 
+hist(h$earn, breaks = 50)
+count(h , earn )
+#187 customers has zero income 
+hist(log(h$earn), breaks = 50)
+
+# Since income is better modelled as log; we might need to remove 0 income households and remodel. 
+h_mod <- h[ which(h$earn > 0 ),]
+rownames(h_mod) <- 1:nrow(h_mod)
+#h_log is the final dataset for modelling log earning 
+#h is final dataset for modelling earnings 
+
+```
+
+2. Fit a linear regression model predicting earnings from height. What transformation should you perform in order to interpret the intercept from this model
+as average earnings for people with average height?
+
+```{r}
+#Fitting a log earning ~ height model 
+hist(h_mod$height, breaks = 30 )
+# This follows a normal dist so using as it is in the model 
+
+lm_1 <- lm(log(earn) ~ height , data = h_mod) 
+summary(lm_1)
+plot(lm_1)
+#Intercept 5.75 gives the log avergae household income of population whose theoretical height is 0.
+#Average earnings is (exp(lm_1$coefficients[1])) ~ 316.22$ 
+
+#In order for the earnings to correspond to average value, we will transform the height values 
+
+h_mod$h_cent <- h_mod$height - mean(h_mod$height)
+lm_2 <- lm(log(earn) ~ h_cent , data = h_mod)
+summary(lm_2)
+#Intercept 9.71 gives the log avergae household income of population that has average height
+#Average earnings is (exp(lm_1$coefficients[1])) ~ 16526$
+# The amount of variance being explained by height is quite low; which makes sense as earnings has no empirical relationship with height. 
+
+```
+
+3. Fit some regression models with the goal of predicting earnings from some
+combination of sex, height, and age. Be sure to try various transformations and interactions that might make sense. Choose your preferred model and justify.
+
+```{r}
+#The data mentions that height and age are taken for one of the members in the household 
+#This will have dependency on whether the person interviewed is male or female; so for the model we are considering interactions between height and sex & age and sex 
+#Since heights and age have different scales; in order for the coefficients to be comparable; we will use the z-score transformation for these. 
+
+h_mod$age <- 90 - h_mod$yearbn
+hist(h_mod$age, breaks = 50 )
+#This is far from normal distribution 
+hist(log(h_mod$age), breaks = 50)
+#Its a symmetric distribution now so should result in better prediction 
+
+#Plotting variables one by one 
+lm_3 <- lm( log(earn) ~ height + log(age) + sex + height:sex + age:sex , data = h_mod)
+summary(lm_3)
+#Coefficient are explained in the next section 
+plot(lm_3)
+
+#Removing outliers : 1810, 116, 1296
+lm_final <- lm( log(earn) ~ height + log(age) + sex + height:sex + age:sex , data = h_mod)
+summary(lm_final)
+plot(lm_final)
+
+```
+
+4. Interpret all model coefficients.
+
+```{r}
+#Explanation of coefficients : 
+#Log of earnings is modelled 
+#Intercept : Average earning of hypothetical population with zero age; zero height and male. 
+#height : With Every unit increase in height; earnings increase by e^0.046. or around 4.7% increment
+#log(age) : WIth every increment of age ; the earnings increase in factor of e^1.91
+#sex : Compared to males; if female responded then earning is around e^1.526 or around 4.7 times
+#height: sex :Gives how much difference is their between males and females in correlation of height and earning 
+#age :sex :Gives how much difference is their between males and females in correlation of age and earning 
+
+```
+
+5. Construct 95% confidence interval for all model coefficients and discuss what they mean.
+
+```{r}
+co <- lm_final$coefficients
+se <- sqrt(diag(vcov(lm_final)))
+tab_final <- as.data.frame(cbind(co,se))
+tab_final$t_value <- co/se
+tab_final$up <- tab_final$co + 1.96*tab_final$se 
+tab_final$low <- tab_final$co - 1.96*tab_final$se 
+colnames (tab_final) <- c("Coefficient","St Error","T_Value","UpperLimit95","LowerLimit95")
+tab_final
+```
+
+
+### Analysis of mortality rates and various environmental factors
+
+The folder `pollution` contains mortality rates and various environmental factors from 60 U.S. metropolitan areas from McDonald, G.C. and Schwing, R.C. (1973) 'Instabilities of regression estimates relating air pollution to mortality', Technometrics, vol.15, 463-482. 
+
+Variables, in order:
+
+* PREC   Average annual precipitation in inches
+* JANT   Average January temperature in degrees F
+* JULT   Same for July
+* OVR65  % of 1960 SMSA population aged 65 or older
+* POPN   Average household size
+* EDUC   Median school years completed by those over 22
+* HOUS   % of housing units which are sound & with all facilities
+* DENS   Population per sq. mile in urbanized areas, 1960
+* NONW   % non-white population in urbanized areas, 1960
+* WWDRK  % employed in white collar occupations
+* POOR   % of families with income < $3000
+* HC     Relative hydrocarbon pollution potential
+* NOX    Same for nitric oxides
+* SO@    Same for sulphur dioxide
+* HUMID  Annual average % relative humidity at 1pm
+* MORT   Total age-adjusted mortality rate per 100,000
+
+For this exercise we shall model mortality rate given nitric oxides, sulfur dioxide, and hydrocarbons as inputs. This model is an extreme oversimplification as it combines all sources of mortality and does not adjust for crucial factors such as age and smoking. We use it to illustrate log transformations in regression.
+
+```{r}
+gelman_dir   <- "http://www.stat.columbia.edu/~gelman/arm/examples/"
+pollution    <- read.dta (paste0(gelman_dir,"pollution/pollution.dta"))
+```
+
+1. Create a scatterplot of mortality rate versus level of nitric oxides. Do you think linear regression will fit these data well? Fit the regression and evaluate a residual plot from the regression.
+
+```{r}
+summary(pollution)
+#Data looks fairly well cleaned 
+hist(pollution$mort , breaks = 20 )
+#Mortality rate follows symmetric distribution 
+qplot(pollution$nox, pollution$mort , xlab = "Nitric OXide level" , ylab = "Mortality Rate"  )
+#These seem to be a few outliers which would skew the data. Also the nitric oxide variable is right skewed 
+hist(pollution$nox , breaks = 50 )
+#Hence converting to log transformation 
+hist(log(pollution$nox), breaks = 50)
+#This distribution is more spread out and should lead to better prediction of Mortaility Rate
+qplot(log(pollution$nox), pollution$mort , xlab = "log(Nitric OXide level)" , ylab = "Mortality Rate", main = "Scatter Plot")
+
+#Comparing with Normal distribution : 
+qqnorm( log(pollution$nox) , plot.it =  T) 
+qqline( log(pollution$nox) , distribution = qnorm)
+# A few outliers are still present
+
+#Comparing with Normal distribution: 
+qqnorm( pollution$mort , plot.it =  T) 
+qqline( pollution$mort , distribution = qnorm)
+
+
+lm_4 <- lm(mort ~ nox , data = pollution)
+summary(lm_4)
+#Explains around 5% variance in mortality rate
+
+```
+
+2. Find an appropriate transformation that will result in data more appropriate for linear regression. Fit a regression to the transformed data and evaluate the new residual plot.
+
+```{r}
+# Log transformation of independent variable nox leads to more symmetric distribution and hence would result in better fitting model 
+
+lm_5 <- lm(mort ~ log(nox) , data = pollution) 
+summary(lm_5) 
+# This model explains around 8,5% variance in R which is better compared to previous model 
+
+
+```
+
+3. Interpret the slope coefficient from the model you chose in 2.
+
+```{r}
+#Mortality rate is positively correlated to Nox level. 
+#For every unit scale increase in logarithmic scale of NOx; the average mortality rate increases by 15% 
+```
+
+4. Construct 99% confidence interval for slope coefficient from the model you chose in 2 and interpret them.
+
+```{r}
+co <- lm_2$coefficients
+se <- sqrt(diag(vcov(lm_2)))
+tab_2 <- as.data.frame(cbind(co,se))
+tab_2$t_value <- co/se
+tab_2$up <- tab_2$co + 1.96*tab_2$se 
+tab_2$low <- tab_2$co - 1.96*tab_2$se 
+
+#Confidence Interval for Intercept : 
+c(tab_2[1,"low"]   , tab_2[1,"up"]) 
+
+#Confidence Interval for Nox Coefficient : 
+c(tab_2[2,"low"]   , tab_2[2,"up"])
+
+```
+
+5. Now fit a model predicting mortality rate using levels of nitric oxides, sulfur dioxide, and hydrocarbons as inputs. Use appropriate transformations when
+helpful. Plot the fitted regression model and interpret the coefficients.
+
+```{r}
+
+lm_5 <- lm(mort ~ log(nox) + log(so2) + log(hc) , data = pollution) 
+summary(lm_5) 
+plot(lm_5)
+
+```
+
+6. Cross-validate: fit the model you chose above to the first half of the data and then predict for the second half. (You used all the data to construct the model in 4, so this is not really cross-validation, but it gives a sense of how the steps of cross-validation can be implemented.)
+
+```{r}
+
+p_train <- pollution[c(1:30),]
+p_test <- pollution[c(31:60),]
+
+lm_6 <- lm(mort ~ log(nox) + log(so2) + log(hc) , data = p_train) 
+summary(lm_6) 
+plot(lm_6)
+
+#Predicting using training model 
+p_test$pred_mort <- predict(lm_6, newdata = p_test)
+
+p_test$res <- p_test$mort - p_test$pred_mort 
+qplot(p_test$pred_mort, p_test$res , xlab = "predicted mortality rate", ylab = "residual mortaility rate", main = "Scatter plot")
+```
+
+### Study of teenage gambling in Britain
+
+```{r,message =FALSE}
+data(teengamb)
+```
+
+1. Fit a linear regression model with gamble as the response and the other variables as predictors and interpret the coefficients. Make sure you rename and transform the variables to improve the interpretability of your regression model.
+
+```{r}
+summary(teengamb)
+#Sex is a categorical variable 
+#Status is assumed a linear variable 
+#We might need to check if correlation exists between status and income 
+#Verbal is also a linear scale
+# Checking distribution 
+hist(teengamb$income)
+#Transforming income as it is right skewed 
+teengamb$inc_log <- log(teengamb$income) 
+
+hist(teengamb$verbal)
+#Transforming verbal as it is left skewed 
+teengamb$ver_sqr <- (teengamb$verbal)^2 
+
+hist(teengamb$gamble, breaks = 20)
+#Transforming gamble as it is right skewed 
+teen <- teengamb[which(teengamb$gamble > 0 ),]
+teen$gamble_log <- log(teen$gamble) 
+
+lm_7 <- lm(gamble_log ~ as.factor(sex) + status + inc_log + ver_sqr , data = teen)
+summary(lm_7)
+plot(lm_7)
+
+#Removing outlier 6 and 23  
+rownames(teen) <- 1:nrow(teen)
+lm_8 <- lm(gamble_log ~ as.factor(sex) + status + inc_log + ver_sqr , data = teen[c(-19,-3),])
+summary(lm_8)
+plot(lm_8)
+
+```
+
+2. Create a 95% confidence interval for each of the estimated coefficients and discuss how you would interpret this uncertainty.
+
+```{r}
+co <- lm_8$coefficients
+se <- sqrt(diag(vcov(lm_8)))
+tab_8 <- as.data.frame(cbind(co,se))
+tab_8$t_value <- co/se
+tab_8$up <- tab_8$co + 1.96*tab_2$se 
+tab_8$low <- tab_8$co - 1.96*tab_2$se 
+
+tab_8 
+```
+
+3. Predict the amount that a male with average status, income and verbal score would gamble along with an appropriate 95% CI.  Repeat the prediction for a male with maximal values of status, income and verbal score.  Which CI is wider and why is this result expected?
+
+```{r}
+teen_new <- teen[FALSE,]
+teen_new[1,] <- sapply(teen[which(teen$sex == 0),], mean, na.rm = TRUE)
+teen_new[2,] <- sapply(teen[which(teen$sex == 0),], max, na.rm = TRUE)
+
+tab_pred <- as.data.frame(predict(lm_8, newdata = teen_new , interval = "prediction" ))
+tab_pred$interval <- tab_pred$upr - tab_pred$lwr 
+#
+```
+
+### School expenditure and test scores from USA in 1994-95
+
+```{r}
+data(sat)
+```
+
+1. Fit a model with total sat score as the outcome and expend, ratio and salary as predictors.  Make necessary transformation in order to improve the interpretability of the model.  Interpret each of the coefficient.
+
+```{r}
+summary(sat)
+#No nulls and data is empirically correct 
+
+#Most of the variables are right skewed, so taking logs for dependent varibles
+hist(sat$total, breaks = 10 )
+
+#Independent variable is a bimodal distribution 
+
+lm_9 <- lm(total ~ log(salary) + log(ratio) + log(expend) , data = sat)
+summary(lm_9)
+plot (lm_9)
+
+#We can use bootstrapping as it doesnt assume how the distribution of coeficients will be like !!
+```
+
+2. Construct 98% CI for each coefficient and discuss what you see.
+
+```{r}
+co <- lm_9$coefficients
+se <- sqrt(diag(vcov(lm_9)))
+tab_9 <- as.data.frame(cbind(co,se))
+tab_9$t_value <- co/se
+tab_9$up <- tab_9$co + 2.58*tab_9$se 
+tab_9$low <- tab_9$co - 2.58*tab_9$se 
+```
+
+3. Now add takers to the model.  Compare the fitted model to the previous model and discuss which of the model seem to explain the outcome better?
+
+```{r}
+hist(log(sat$takers))
+#Takers is also a bimodal distribution; hence it is likely that it will be able to explain the variance in the total score variable better 
+lm_0 <- lm(total ~ log(salary) + log(ratio) + log(expend) + log(takers), data = sat)
+summary(lm_0)
+#This model explains around 89% of variance which is stark improvement over the previous model 
+```
+
+# Conceptual exercises.
+
+### Special-purpose transformations:
+
+For a study of congressional elections, you would like a measure of the relative amount of money raised by each of the two major-party candidates in each district. Suppose that you know the amount of money raised by each candidate; label these dollar values $D_i$ and $R_i$. You would like to combine these into a single variable that can be included as an input variable into a model predicting vote share for the Democrats.
+
+Discuss the advantages and disadvantages of the following measures:
+
+* The simple difference, $D_i-R_i$
+
+*This variable is not normalized*  
+*Advantages : Makes it easy to intepret model *  
+*Disadvantages : THe difference will depend on the total dollar value area is contributing*  
+
+* The ratio, $D_i/R_i$
+
+*Advantages : Normalised variable so scale is easy to define and understand*
+*Disadvantages : Depends on the  Will be a good variable to model if both the candidates are. If districts are polarized ie all of them has strong support for either one of the contestants*
+*If the support for one candidate is very high, this might lead to very skewed distribution*
+
+* The difference on the logarithmic scale, $log D_i-log R_i$ 
+
+*Advantages : This might be used when one of the candiates have substantially higher funding compared to other one. In such a case the (2) option cant be used*  
+*Disadvantages : Cant be used for bimodal*
+
+* The relative proportion, $D_i/(D_i+R_i)$.
+
+*Advantages : This is normalized variable.The chance for having bimodal distribution even in case of polarised voting area is less*
+*Its easy to intepret as well as represent *
+*Disadvantages: NA*
+
+### Transformation 
+
+For observed pair of $\mathrm{x}$ and $\mathrm{y}$, we fit a simple regression model 
+$$\mathrm{y}=\alpha + \beta \mathrm{x} + \mathrm{\epsilon}$$ 
+which results in estimates $\hat{\alpha}=1$, $\hat{\beta}=0.9$, $SE(\hat{\beta})=0.03$, $\hat{\sigma}=2$ and $r=0.3$.
+
+1. Suppose that the explanatory variable values in a regression are transformed according to the $\mathrm{x}^{\star}=\mathrm{x}-10$ and that $\mathrm{y}$ is regressed on $\mathrm{x}^{\star}$.  Without redoing the regression calculation in detail, find $\hat{\alpha}^{\star}$, $\hat{\beta}^{\star}$, $\hat{\sigma}^{\star}$, and $r^{\star}$.  What happens to these quantities when $\mathrm{x}^{\star}=10\mathrm{x}$ ? When $\mathrm{x}^{\star}=10(\mathrm{x}-1)$?
+
+
+2. Now suppose that the response variable scores are transformed according to the formula
+$\mathrm{y}^{\star\star}= \mathrm{y}+10$ and that $\mathrm{y}^{\star\star}$ is regressed on $\mathrm{x}$.  Without redoing the regression calculation in detail, find $\hat{\alpha}^{\star\star}$, $\hat{\beta}^{\star\star}$, $\hat{\sigma}^{\star\star}$, and $r^{\star\star}$.  What happens to these quantities when $\mathrm{y}^{\star\star}=5\mathrm{y}$ ? When $\mathrm{y}^{\star\star}=5(\mathrm{y}+2)$?
+
+
+3. In general, how are the results of a simple regression analysis affected by linear transformations of $\mathrm{y}$ and $\mathrm{x}$?
+
+
+
+4. Suppose that the explanatory variable values in a regression are transformed according to the $\mathrm{x}^{\star}=10(\mathrm{x}-1)$ and that $\mathrm{y}$ is regressed on $\mathrm{x}^{\star}$.  Without redoing the regression calculation in detail, find $SE(\hat{\beta}^{\star})$ and $t^{\star}_0= \hat{\beta}^{\star}/SE(\hat{\beta}^{\star})$.
+
+
+5. Now suppose that the response variable scores are transformed according to the formula
+$\mathrm{y}^{\star\star}=5(\mathrm{y}+2)$ and that $\mathrm{y}^{\star\star}$ is regressed on $\mathrm{x}$.  Without redoing the regression calculation in detail, find $SE(\hat{\beta}^{\star\star})$ and $t^{\star\star}_0= \hat{\beta}^{\star\star}/SE(\hat{\beta}^{\star\star})$.
+
+
+6. In general, how are the hypothesis tests and confidence intervals for $\beta$ affected by linear transformations of $\mathrm{y}$ and $\mathrm{x}$?
+
+
+
+		
+# Feedback comments etc.
+
+If you have any comments about the homework, or the class, please write your feedback here.  We love to hear your opinions.
+
